@@ -1,15 +1,11 @@
+rm(list=ls()) #for clearing the environment
 setwd("~/GitHub/STD_AT2")
 
 library(tidyverse)
 library(readxl)
 library(Amelia)
 library(dplyr)
-
-library(httr)
-library(rsdmx)
-library(jsonlite)
-library(lubridate)
-library(ckanr)
+library(tidyr)
 
 ################################
 ## Load the data
@@ -30,20 +26,25 @@ alcohol_deaths <-  read_csv("beh_alcafdth_lhn_trend.csv")
 # crime data by postcode from https://www.bocsar.nsw.gov.au/Pages/bocsar_datasets/Datasets-.aspx
 postcode_data <- read_csv("7_PostcodeData2018.csv")
 
-# crime data by LGA from https://www.bocsar.nsw.gov.au/Pages/bocsar_datasets/Datasets-.aspx
-RCIdata <- read_excel("8_RCI_offencebymonth.xlsm") ## to download as excel. 
-#forgot that this dataset is changing dates into random numbers. 
-#either resolve this or exclude this data
+## crime data by suburbs from https://www.bocsar.nsw.gov.au/Pages/bocsar_datasets/Datasets-.aspx
+## suburbdata <- read_csv("9_SuburbData2018.csv")
 
 # Unemployment data by LGA from https://docs.jobs.gov.au/documents/unsmoothed-small-area-labour-markets-local-government-area-lga-series-december-quarter
 unemployment_LGA <- read_csv("salm_unsmoothed_lga_datafiles_-_december_quarter_2018 (1).csv")
 
-# LGA and Postcode mapping file
+# LGA and Postcode mapping file Cuong created
 mapping <- read_csv("Australia_lga_postcode_mappings_2016.csv")
 
+# LGA to LHD mapping file Michael created
+LGA_LHD_Map <- read_excel("LGAtoLHD.xlsx") 
+
 ###############################################################################################################################################
-## crime data by suburbs from https://www.bocsar.nsw.gov.au/Pages/bocsar_datasets/Datasets-.aspx
-## suburbdata <- read_csv("9_SuburbData2018.csv")
+
+# crime data by LGA from https://www.bocsar.nsw.gov.au/Pages/bocsar_datasets/Datasets-.aspx
+#RCIdata <- read_excel("8_RCI_offencebymonth.xlsm") ## to download as excel. 
+#RCIdata <- read_excel("RCI_offencebymonth.xlsm")
+#forgot that this dataset is changing dates into random numbers. 
+#either resolve this or exclude this data
 
 ####### other ways to load RCI data
 
@@ -52,6 +53,11 @@ mapping <- read_csv("Australia_lga_postcode_mappings_2016.csv")
 ## RCIdata <- read_csv("http://data.gov.au/storage/f/2013-09-12T23%3A32%3A36.918Z/rci-offencebymonth.csv") ## this is data is only until 2012!!
 
 ## 2. loading using API
+library(httr)
+library(rsdmx)
+library(jsonlite)
+library(lubridate)
+library(ckanr)
 ## method 1 - doesn't really work
 # options(stringsAsFactors = TRUE)
 url <- "https://www.bocsar.nsw.gov.au/Documents/Datasets/RCI_offencebymonth.xlsm"
@@ -86,7 +92,7 @@ organization_list()
 
 ## method 3
 ## RCIurl <- GET (url = "https://data.nsw.gov.au/data/api/3/action/datastore_create?resource_id=1d5b2851-52e9-4327-a81b-19149c63f736") # to create API
-## RCIurl <- GET (url = "http://www.data.gov.au/api/3/action/datastore_search?resource_id=1d5b2851-52e9-4327-a81b-19149c63f736&limit=5") # to insert API
+## RCIurl <- GET (url = "http://www.data.gov.au/api/3/action/datastore_search?resource_id=1d5b2851-52e9-4327-a81b-19149c63f736&limit=5") # to insert API####
 
 ################################################################################################################################################
 
@@ -134,6 +140,8 @@ unemployment_LGA2 <- unemployment_LGA %>%
   select(.,c('Local Government Area (LGA)', 'LGA Code', 'QuarterYear', 'unemploy_Rate')) %>%
   separate(.,"QuarterYear",c("Quarter","Year"),sep ="-")
 
+########NEXT DATASET####################################
+
 # Clean the "alcohol hospitalisations" data
 # Remove the NA's /blank data (from all the comments at the end of the csv file)
 alcohol_hospitalisations <- alcohol_hospitalisations %>%
@@ -150,7 +158,8 @@ alcohol_hospitalisations <- rename(alcohol_hospitalisations, hospitalisation_num
 alcohol_hospitalisations <- rename(alcohol_hospitalisations, hospitalisation_rate = "Rate per 100,000 population")
 alcohol_hospitalisations <- rename(alcohol_hospitalisations, LHD = "Local Health Districts")
 
-#####################################################
+########NEXT DATASET####################################
+
 # Clean the "alcohol deaths" data
 # Remove the NA's /blank data (from all the comments at the end of the csv file)
 alcohol_deaths <- alcohol_deaths %>%
@@ -176,7 +185,8 @@ alcohol_consumption <- alcohol_consumption %>%
 #Consumption data is by year... the other two are by financial year... let's forget using consumption for now and use the freq instead
 #####################################################################
 
-#####################################################################
+########NEXT DATASET####################################
+
 names(alcohol_frequency)
 # Clean the alcohol frequency data
 # Remove the NA's /blank data (from all the comments at the end of the csv file)
@@ -220,13 +230,59 @@ alcohol_hospitalisations <- alcohol_hospitalisations %>%
 
 alcohol_hospitalisations
 
-#subset/filter postcode_data to keep data from Jan-08 to Dec-18
+########NEXT DATASET####################################
+
+# filter mapping data for NSW
+mapping <- filter(mapping, State == 'New South Wales')
+
 #filter postcode_data to keep data from Jan-08 to Dec-18 and then filter further for liquor offences
 names(postcode_data)
 subset = select(postcode_data, Postcode, Offence, "Jan-08" : "Dec-18")
 alcohol_offences <- filter(subset, Offence == 'Liquor offences')
-alcohol_offences <- rename(alcohol_offences, Postcode =  "area") ## rename all the LGA/LHD/Postcode to Area to combine them?
 alcohol_offences
+
+# Use "gather" to create a new variable / column for year - this will bring hospital and violence data into same format time wise
+alcohol_offences <- alcohol_offences %>% 
+  gather(key = year, value = violence_count, "Jan-08" : "Dec-18")
+alcohol_offences
+
+#change year from 2-digits to 4-digits
+offence_data$year <- parse_date_time('Jan-08',orders='my')
+
+#split date into 2 columns
+offence_data <- offence_data %>%
+  separate(.,"year",c("Year","Month"),sep="-")
+
+#combine the data from monthly to annual
+offence_data_ag=aggregate(violence_count ~ Postcode + Offence + Year + State + LGA, data = offence_data, FUN = sum)
+
+########NEXT DATASET####################################
+
+#filter suburbdata to keep data from Jan-08 to Dec-18 and then filter further for liquor offences
+names(suburbdata)
+suburbdata <- rename(suburbdata, offence =  'Offence category')
+unique (suburbdata$offence)
+suburb_subset = select(suburbdata, Suburb, offence, "Jan 2008" : "Dec 2018")
+alcoholoffences <- filter(suburb_subset, offence == 'Liquor offences')
+alcoholoffences
+
+# Use "gather" to create a new variable / column for year - this will bring hospital and violence data into same format time wise
+alcoholoffences <- alcoholoffences %>% 
+  gather(key = year, value = violence_count, "Jan 2008" : "Dec 2018")
+alcoholoffences
+
+
+########NEXT DATASET#########################################################
+# Bring RCI data into same format as offences data
+RCIdata <- rename(RCIdata, offence =  'Offence category') # rename the variable so it's more friendly.
+RCIdata = select(RCIdata, LGA, offence, "Jan-08" : "Dec-18")
+RCIdata <- filter(RCIdata, offence == 'Liquor offences')
+RCIdata
+
+RCIdata <- RCIdata %>% 
+  gather(key = year, value = violence_count, "Jan-08" : "Dec-18")
+RCIdata
+##############################################################################
 
 ##################################################
 ## Merging Datasets
@@ -246,19 +302,50 @@ str(alcohol_freq_hosp_death)
 alcohol_freq_hosp_death  <-   filter (alcohol_freq_hosp_death, !( year =="2001-2002" | year == "2002-2003"| year == "2003-2004"| year =="2004-2005" | year =="2005-2006" | year =="2006-2007" ))
 # alcohol_freq_hosp_death  <-   filter (alcohol_freq_hosp_death, LHD == 'Sydney LHD')
 alcohol_freq_hosp_death
+write_csv(alcohol_freq_hosp_death, path = "alcohol_freq_hosp_death.csv")
+
+
+########NEXT DATASET####################################
+
+#Merge Postcode/LGA and LHD/LGA files
+mapping <- rename(mapping, LGA =  'LGA region')
+mergeCol.1 <- c("LGA")
+basic_merge <- merge(LGA_LHD_Map, mapping, by = mergeCol.1)
+
+########NEXT DATASET####################################
+
+#Merge this merged file into Postcode violence data
+mergeCol.2 <- c("Postcode")
+offence_data <- merge(alcohol_offences, basic_merge, by = mergeCol.2)
+
+########NEXT DATASET####################################
+
+#Merge this merged file into hospital data
+mergeCol.3 <- c("LHD")
+hospital_data <- merge(alcohol_freq_hosp_death, basic_merge, by = mergeCol.3)
+
+########NEXT DATASET####################################
+
+#Merge this merged file into Suburb violence data
+alcoholoffences <- rename(alcoholoffences, LGA =  'Suburb')
+mergeCol.4 <- c("LGA")
+offencedata <- merge(alcoholoffences, basic_merge, by = mergeCol.4)
+
+########NEXT DATASET####################################
 
 # Merge hospital data and offence data
-names(alcohol_freq_hosp_death)
-names(alcohol_offences)
-mergeCols <- c("LHD") #wouldn't work here though since we first need re-name all the different location variables -> AREA
+mergeCols <- c("year","LGA", "LHD", "Postcode", "State") #year variable needs to be in the same format for it to work. atm, none of the merge codes below work
+mergeCols <- c("LGA", "LHD", "Postcode", "State") #year variable needs to be in the same format for it to work
 
-# just adiding some merging commands for now - 
-# inner <- merge(alcohol_offences, alcohol_freq_hosp_death, by = mergeCols) #wouldn't work untile column renamed
-# left  <- merge(alcohol_offences, alcohol_freq_hosp_death, by = mergeCols, all.x = TRUE) #wouldn't work untile column renamed
-# right <- merge(alcohol_offences, alcohol_freq_hosp_death, by = mergeCols, all.y = TRUE) #wouldn't work untile column renamed
-cross <- merge(alcohol_freq_hosp_death, alcohol_offences, by = NULL)
-natural <- merge(alcohol_freq_hosp_death, alcohol_offences)
+# just adiding some sample merging commands for now - 
+# 
+inner <- merge(offence_data, hospital_data, by = mergeCols)
+# inner <- merge(offence_data, hospital_data, by = year)
+# left  <- merge(offence_data, hospital_data, by = mergeCols, all.x = TRUE) #doesn't work for either codes above
+# right <- merge(offence_data, hospital_data, by = mergeCols, all.y = TRUE) #doesn't work for either codes above
+# 
+cross <- merge(offence_data, hospital_data, by = NULL)
+# natural <- merge(offence_data, hospital_data) #doesn't work
 
-#Merge mapping and violence files
-mergeCols <- c("Postcode")
-inner <- merge(alcohol_offences, mapping, by = mergeCols)
+# Export to .csv Files 
+write_csv(offence_data, path = "offence_data.csv")
